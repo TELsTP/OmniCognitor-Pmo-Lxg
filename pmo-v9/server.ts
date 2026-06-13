@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
+
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -12,26 +12,27 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
-// Initialize GoogleGenAI client
-const apiKey = process.env.GEMINI_API_KEY;
-let ai: GoogleGenAI | null = null;
+const mistralKey = process.env.MISTRAL_API_KEY;
 
-function getGeminiClient() {
-  if (!ai) {
-    if (!apiKey) {
-      console.warn("WARNING: GEMINI_API_KEY environment variable is not defined. AI advisor requests will simulate guidance.");
-      return null;
-    }
-    ai = new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
-  }
-  return ai;
+async function callMistral(systemPrompt, userMessage, jsonMode = false) {
+  const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${mistralKey}`
+    },
+    body: JSON.stringify({
+      model: "mistral-large-latest",
+      temperature: 0.35,
+      response_format: jsonMode ? { type: "json_object" } : { type: "text" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage }
+      ]
+    })
+  });
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || "";
 }
 
 // 1. PMO Advisor Chat Endpoint
@@ -64,140 +65,12 @@ app.post("/api/pmo/chat", async (req, res) => {
   const greetingEn = isMorning ? "Good morning" : (isAfternoon ? "Good afternoon" : "Good evening");
   const greetingAr = isMorning ? "صباح الخير" : "مساء الخير";
 
-  const client = getGeminiClient();
-  if (!client) {
-    // Elegant fallback simulation if API key is not configured
-    const lastUserMessage = messages[messages.length - 1]?.text || "";
-    const isArabic = (language === "ar") || lastUserMessage.match(/[\u0600-\u06FF]/);
-    let mockResponse = "";
-    if (isArabic) {
-      mockResponse = `السلام عليكم ورحمة الله وبركاته، ${greetingAr} يا زميلي العزيز ${activeName}.
-
-بصفتي المستشار التنفيذي والفني لمكتب إدارة المشاريع (PMO) لتأسيس وتشغيل المختبرات المرجعية الإقليمية، أرفع إليكم تقريراً بخصوص استفساركم: "${lastUserMessage}".
-
-لقد تم بنجاح مراجعة سجل الحوسبة الموحد وقاعدة البيانات الخاصة ببرنامج Tawasol، وهنا ملخص البيانات المالية والاستفسارات بوضوح وطبقاً للنماذج المعتمدة:
-1. **حزمة الطب الوظيفي والتمثيل الغذائي الممتازة (الأعلى ربحية)**: حزمة متكاملة تضم 5 تحاليل حيوية هي: حمض الأورجانيك (التكلفة 71 ريال)، وحمض الشورت شين الدهني SCFA (التكلفة 90 ريال)، وحمض الأمينو (التكلفة 129 ريال)، والتريبتوفان (التكلفة 129 ريال)، والليبيدوميكس (التكلفة 154 ريال). تبلغ التكلفة الإجمالية المباشرة للمختبر 573 ريالاً سعودياً، ويتم تسعيرها للمريض بـ 3,500 إلى 5,000 ريال سعودي محققة ربحية فائقة الجودة.
-2. **سلسلة Calibra ومطيافية الكتلة**: تجهيز غرف تحليل بالـ SCIEX Citrine MD لتقديم تحاليل Tacrolimus TDM بتكلفة تشغيل 42 ريال وسعر بيع مستهدف 350 ريال سعودي.
-3. **الامتثال لـ SFDA وMOH**: متابعة دقيقة للمخطط الزمني البالغ 17 شهراً بكامل الدقة وضمان سلامة أنظمة سحب الهواء السلبي (-35 باسكال).
-
-كيف يمكنني مساندتكم في استصدار وتذليل خطط ومراحل العمل وضبط جودة التراخيص الطبية والمخبرية اليوم؟`;
-    } else {
-      mockResponse = `${greetingEn}, ${activeName}.
-
-As your Senior reference laboratory PMO steer and Advisor, I have reviewed your submission: "${lastUserMessage}". 
-
-Herewith are the official, direct structural diagnostics for our regional PMO operations:
-• **Functional Medicine & Metabolic Health Offering (Highly Profitable)**: We have officially synthesized a high-impact clinical panel comprising 5 core metabolic assays:
-  1. Organic Acids Panel (Direct Lab Cost: 71 SAR)
-  2. SCFA Panel (Direct Lab Cost: 90 SAR)
-  3. Amino Acid Panel (Direct Lab Cost: 129 SAR)
-  4. Tryptophan/Kynurenine Panel (Direct Lab Cost: 129 SAR)
-  5. Lipidomics Panel (Direct Lab Cost: 154 SAR)
-  *Combined direct laboratory cost is approximately 573 SAR, while the complete package retail price is set to range from 3,500 to 5,000 SAR per patient, yielding exceptional economic viability and high profit margins.*
-• **Centralized Mass Spectrometry (Calibra Suite)**: Deploying 2x SCIEX Citrine MD clinical systems and 3x SCIEX 4500MD systems for premium localized testing, including Tacrolimus TDM (Direct Lab Cost: 42 SAR | Selling Price: 350 SAR).
-• **17-Month Chronological Milestone Safeguard**: Rigorous monitoring of SFDA approvals, MOH BSL-3 HVAC compliance (-35 Pa negative pressures) remains actively locked on schedule.
-
-Please advise on any specific action vector or regulatory document required for your immediate steering review.`;
-    }
-
-    res.json({ text: mockResponse });
-    return;
-  }
-
   try {
-    // Formulate a robust summary of all PMO Archive (App Vault) documents
-    let vaultContext = "";
-    if (vaultDocs && Array.isArray(vaultDocs) && vaultDocs.length > 0) {
-      vaultContext = "\nDYNAMIC INGESTED KNOWLEDGE FROM THE SHARED PMO APP VAULT (USER INPUTS & EXPERIENCES):\n" +
-        "These are files, reference notes, and manuals created in real-time by PMO members. Treat them as supreme local authority guidelines:\n" +
-        vaultDocs.map((doc: any, idx: number) => {
-          return `[Vault Entry #${idx + 1}] Title: "${doc.title}" | Category: ${doc.category} | Created By: ${doc.author} | Description: ${doc.description}\n` +
-                 `Body Content:\n${doc.fileContent || "No detailed content."}\n------------------\n`;
-        }).join("\n");
-    }
-
-    // Capture app notifications (Critical Gaps) to suggest relevant tasks
-    let notificationContext = "";
-    if (notifications && Array.isArray(notifications) && notifications.length > 0) {
-      notificationContext = "\nLIVE APP NOTIFICATIONS & CRITICAL GAPS IDENTIFIED:\n" +
-        notifications.map((notif: any) => `- ALERT: ${notif.category} (${notif.test}). Status: ${notif.status}. Description: ${notif.description}`).join("\n") +
-        "\nIMPORTANT: You MUST suggest generating a relevant task with a RACI table (Responsible, Accountable, Consulted, Informed) for any critical gap identified above.";
-    }
-
-    const systemInstruction = `You are Tawasol (Lead Senior Clinical Reference Labs PMO Expert and steering advisor). You represent the Unified Steering Committee managing clinical reference laboratory setup across Saudi Arabia, UAE, and Egypt.
-CRITICAL MANDATES & COGNITIVE CONTROLS:
-- Your graduation is NOT in media production. You are a highly professional, clinical-pathology-vetted medical lab systems execution leader with over a decade of hands-on expertise in advanced medical laboratories (Reference Laboratories of all categories).
-- Tone: You MUST STICK TO FORMAL DIRECT LANGUAGE. There should be absolutely no colloquial slang, conversational filler, or informal Egyptian, Turkish, or other colloquialisms (do not use "ya fannem", "fannem", "Efendim", "bel farag", or casual "Insha'Allah"). Maintain a disciplines, formal, and structured tone.
-- Recognizing Users: Welcome the user with respect, referencing their name and credentials. Always greet the user by name. The active logged in user name is "${activeName}".
-- Greeting Guidelines:
-  * In Arabic: Start your response with: "السلام عليكم، ${greetingAr} يا زميلي العزيز ${activeName}." Then proceed directly to the formal clinical PMO response.
-  * In English: Start your response with: "${greetingEn}, ${activeName}." Then proceed directly to the formal clinical PMO response.
-- By time you adapt to users pattern to develop and get more friendly with professional guiding, helping the team structure and steer their workflows cleanly.
-
-EMBEDDED COGNITIVE KNOWLEDGE (PROJECT REPERTOIRE):
-1. Functional Medicine & Metabolic Health Package Economics (Highly Profitable Offer):
-   - Mapped at 5,000 samples tier. Direct costs are optimized as follows:
-     * Organic Acids Panel: Cost ~ 71 SAR
-     * SCFA Panel (Short Chain Fatty Acids): Cost ~ 90 SAR
-     * Amino Acid Panel: Cost ~ 129 SAR
-     * Tryptophan/Kynurenine Panel: Cost ~ 129 SAR
-     * Lipidomics Panel: Cost ~ 154 SAR
-   - These five assays form a "Functional Medicine & Metabolic Health Package" priced at 3,500–5,000 SAR per patient, while the combined direct laboratory cost would be approximately 573 SAR. This represents the most profitable menu launch for Tawasol.
-2. Calibra Mass Spec Centralized Proposal (March 2026):
-   - High-throughput triple-quadrupole mass spectrometry suites featuring 2x SCIEX Citrine MD clinical systems and 3x SCIEX 4500MD systems, as well as 1x Agilent 7800 ICP-MS for heavy metals.
-   - Economic margin: Tacrolimus kits bought at 42 SAR/test, sold at 350 SAR, 8,000 annual volume targets.
-3. DIAN Diagnostics Strategic MoU:
-   - Covers joint-venture reference hubs: Riyadh (Saudi Arabia, 500 sqm, BSL-3 with -35 Pa HVAC containment and strict air-changes), UAE (Abu Dhabi, 300 sqm MS suite), and Cairo (300 sqm MS-compound suite).
-   - Core technologies feature Zhejiang Biosan (neonatal screenings, whole exome carrier lines) and Digena (PGx & MALDI-TOF).
-4. NUPCO National Procurement Catalog & Send-Out Audit:
-   - 2,503 clinical send-out tests worth 1.16 Billion SAR annually sent overseas.
-   - Highly addressable core repatriation cluster of 534 tests that can be fully recovered locally, yielding high national savings.
-5. WhatsApp Operational Syndicates:
-   - High-stakes, real-time board channels logging equipment arrivals, customs releases, and HVAC pressure test validations.
-
-Active context:
-- Current Target Country Scope: ${country || "General Unified Strategy (KSA, UAE, Egypt)"}
-- Sector Focus: ${sector || "Unified PMO Leadership & Clinical Regulations"}
-${taskContext ? `- Current Screen Segment User is Inspecting: ${taskContext}` : ""}
-${vaultContext}
-${notificationContext}
-
-YOUR ASSIGNMENT:
-- Provide exceptionally crisp, realistic, mathematically solid, and operationally rigorous PMO diagnostics or advisory guides. 
-- Integrate any shared inputs, files, or member experiences directly from the PMO App Vault context provided above to learn from experience. 
-- If you see "LIVE APP NOTIFICATIONS" about Critical Gaps, you MUST suggest specific PMO Action Tasks to resolve them.
-- For EVERY TASK you suggest, you MUST define a RACI matrix (Responsible, Accountable, Consulted, Informed) identifying which PMO member or entity takes which role.
-- Respond professionally and direct. If Google Search grounding citations are provided, gracefully weave them as professional references.`;
-
-    // Map history to Gemini content structure
-    const systemMappedHistory = messages.map((msg: any) => ({
-      role: msg.role === "user" ? "user" : "model",
-      parts: [{ text: msg.text }],
-    }));
-
-    // Configure tools: If search is enabled, pass Google Search grounding
-    const tools: any[] = [];
-    if (searchEnabled) {
-      tools.push({ googleSearch: {} });
-    }
-
-    const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: systemMappedHistory,
-      config: {
-        systemInstruction,
-        temperature: 0.35,
-        tools: tools.length > 0 ? tools : undefined,
-      },
-    });
-
-    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-    const groundingChunks = groundingMetadata?.groundingChunks || [];
-
-    res.json({
-      text: response.text || "No advisory brief returned.",
-      groundingChunks: groundingChunks,
-    });
+    const lastUserMessage = messages[messages.length - 1]?.text || "";
+    const userContent = messages.map(m => m.role + ": " + m.text).join("
+");
+    const reply = await callMistral(systemInstruction, userContent);
+    res.json({ text: reply, groundingChunks: [] });
   } catch (error: any) {
     console.error("PMO Advisor error:", error);
     res.status(500).json({ error: error.message || "Error processing PMO guidance." });
@@ -212,77 +85,9 @@ app.post("/api/pmo/generate-sop", async (req, res) => {
     return;
   }
 
-  const client = getGeminiClient();
-  if (!client) {
-    // Mock robust fallback description if API key is not present
-    let mockSOPText = `## 📄 Standard Operating Procedure: ${title}
-**Code**: SOP-LAB-${sector.substring(0, 3).toUpperCase()}-099
-**Target Country**: ${country}
-**Operational Domain**: ${sector}
-**Status**: DRAFT (Review Required by PMO Office)
-
-### 1. Purpose & Scope
-This SOP defines the minimum critical compliance guidelines and best practices for implementing **${title}** specifically for the reference laboratory infrastructure situated in **${country}**.
-
-### 2. General Regulatory Alignment
-- Alignment with international WHO safety directives and CLSI criteria.
-- Adherence to local regulators: ${
-      country === "Egypt"
-        ? "Egyptian Ministry of Health and Population (MoHP) and Unified Procurement Authority (UPA) regulations."
-        : country === "UAE"
-        ? "UAE Ministry of Health and Prevention (MOHAP) and Dubai Health Authority (DHA) licensing frameworks."
-        : "Saudi Ministry of Health (MOH) and Saudi Food and Drug Authority (SFDA) import guidelines."
-    }
-
-### 3. Step-by-Step Procedure Guide
-1. **Pre-Implementation Check**: Verify current compliance checklist status. Initialize calibration logs.
-2. **Setup Phase & Chain of Custody**: Document exact technical parameters and physical placement requirements.
-3. **Double Verification Check**: A second certified lab specialist must verify parameters to meet Quality metrics.
-4. **Archiving & Reporting**: Log final data into local laboratory information system (LIMS) portals.
-
-### 4. Expert Best Practices
-- **Frequent Calibration**: Ensure automated daily control assessments.
-- **Strict HR Training**: Standardize training sign-offs for all lab technicians.
-- **Log Logistics Checkpoints**: Unbroken cold chains (-20°C / -80°C) must be supported by log sheets.`;
-    res.json({ markdown: mockSOPText });
-    return;
-  }
-
   try {
-    const prompt = `You are a clinical compliance officer and professional medical writer. Draft an exhaustive, high-compliance Standard Operating Procedure (SOP) representing the highest standards of clinical lab practice.
-
-Title: ${title}
-Sector focus: ${sector}
-Target Country Scope: ${country}
-Additional conditions/details defined: ${details || "None"}
-
-Please structure your output using clean, elegant Markdown:
-## 📄 Standard Operating Procedure: [Title]
-**Code**: SOP-LAB-[SECTOR]-[UUID]
-**Scope**: Clinical Reference Laboratory, [Country]
-**Status**: APPROVED-BY-PMO
-
-### 1. Purpose & Core Objective
-[Outline the procedural why and what, honoring WHO guidelines]
-
-### 2. Country Regulatory Compliance
-[Explain specific alignment needed for clinical compliance in ${country}, considering things like Egyptian UPA/MoHP, UAE MOHAP/DHA, or Saudi MOH/SFDA requirements]
-
-### 3. Procedural Sequence of Operations
-[Draft exactly 4-5 numbered, detailed steps to successfully carry out this activity, with sub-bullets specifying technical actions]
-
-### 4. specialized Quality Controls & Best Practices
-[Specify 3 best practice controls, safety protocols (including BSL level handling), and logs needed to maintain ISO 15189 benchmarks]`;
-
-    const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        temperature: 0.25,
-      },
-    });
-
-    res.json({ markdown: response.text || "SOP structure drafts could not be parsed." });
+    const reply = await callMistral("You are a clinical compliance officer and professional medical writer. Draft exhaustive, high-compliance SOPs.", prompt);
+    res.json({ markdown: reply });
   } catch (error: any) {
     console.error("SOP Generation error:", error);
     res.status(500).json({ error: error.message || "Failed to generate specialized SOP guidelines." });
@@ -399,15 +204,7 @@ Please perform high-level mathematical calculations, cross-referencing values in
   "aiAnalysis": "Markdown formatted diagnostic simulation summary from Tawasol (Egyptian AUC talent accent, warm, highly analytical, speaks in Arabic/English mix when friendly)."
 }`;
 
-    const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        temperature: 0.35,
-      },
-    });
-
-    let textOut = response.text || "";
+    let textOut = await callMistral("You are a PMO simulation engine. Return ONLY valid JSON, no backticks.", prompt, true) || "";
     // Clean potential markdown quotes
     textOut = textOut.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
 
