@@ -67,36 +67,22 @@ app.post("/api/pmo/chat", async (req, res) => {
   if (!mistralKey) {
     // Elegant fallback simulation if API key is not configured
     const lastUserMessage = messages[messages.length - 1]?.text || "";
-    const isArabic = (language === "ar") || lastUserMessage.match(/[\u0600-\u06FF]/);
+    const isArabic = (language === "ar") || /[\u0600-\u06FF]/.test(lastUserMessage);
     let mockResponse = "";
     if (isArabic) {
-      mockResponse = `السلام عليكم ورحمة الله وبركاته، ${greetingAr} يا زميلي العزيز ${activeName}.
-
-بصفتي المستشار التنفيذي والفني لمكتب إدارة المشاريع (PMO) لتأسيس وتشغيل المختبرات المرجعية الإقليمية، أرفع إليكم تقريراً بخصوص استفساركم: "${lastUserMessage}".
-
-لقد تم بنجاح مراجعة سجل الحوسبة الموحد وقاعدة البيانات الخاصة ببرنامج Tawasol، وهنا ملخص البيانات المالية والاستفسارات بوضوح وطبقاً للنماذج المعتمدة:
-1. **حزمة الطب الوظيفي والتمثيل الغذائي الممتازة (الأعلى ربحية)**: حزمة متكاملة تضم 5 تحاليل حيوية هي: حمض الأورجانيك (التكلفة 71 ريال)، وحمض الشورت شين الدهني SCFA (التكلفة 90 ريال)، وحمض الأمينو (التكلفة 129 ريال)، والتريبتوفان (التكلفة 129 ريال)، والليبيدوميكس (التكلفة 154 ريال). تبلغ التكلفة الإجمالية المباشرة للمختبر 573 ريالاً سعودياً، ويتم تسعيرها للمريض بـ 3,500 إلى 5,000 ريال سعودي محققة ربحية فائقة الجودة.
-2. **سلسلة Calibra ومطيافية الكتلة**: تجهيز غرف تحليل بالـ SCIEX Citrine MD لتقديم تحاليل Tacrolimus TDM بتكلفة تشغيل 42 ريال وسعر بيع مستهدف 350 ريال سعودي.
-3. **الامتثال لـ SFDA وMOH**: متابعة دقيقة للمخطط الزمني البالغ 17 شهراً بكامل الدقة وضمان سلامة أنظمة سحب الهواء السلبي (-35 باسكال).
-
-كيف يمكنني مساندتكم في استصدار وتذليل خطط ومراحل العمل وضبط جودة التراخيص الطبية والمخبرية اليوم؟`;
+      mockResponse = `${greetingAr} يا زميلي العزيز ${activeName}. ` +
+        `بصفتي المستشار التنفيذي لمكتب إدارة المشاريع، أرفع إليكم ردي على: "${lastUserMessage}".\n\n` +
+        "1. حزمة الطب الوظيفي: أورجانيك 71 ريال، SCFA 90 ريال، أمينو 129 ريال، تريبتوفان 129 ريال، ليبيدوميكس 154 ريال. التكلفة الإجمالية 573 ريال، سعر البيع 3,500–5,000 ريال.\n" +
+        "2. سلسلة Calibra: SCIEX Citrine MD - Tacrolimus TDM بتكلفة 42 ريال وسعر بيع 350 ريال.\n" +
+        "3. الامتثال لـ SFDA وMOH: متابعة المخطط الزمني 17 شهراً وأنظمة HVAC (-35 باسكال).\n\n" +
+        "كيف يمكنني مساندتكم اليوم؟";
     } else {
-      mockResponse = `${greetingEn}, ${activeName}.
-
-As your Senior reference laboratory PMO steer and Advisor, I have reviewed your submission: "${lastUserMessage}". 
-
-Herewith are the official, direct structural diagnostics for our regional PMO operations:
-• **Functional Medicine & Metabolic Health Offering (Highly Profitable)**: We have officially synthesized a high-impact clinical panel comprising 5 core metabolic assays:
-  1. Organic Acids Panel (Direct Lab Cost: 71 SAR)
-  2. SCFA Panel (Direct Lab Cost: 90 SAR)
-  3. Amino Acid Panel (Direct Lab Cost: 129 SAR)
-  4. Tryptophan/Kynurenine Panel (Direct Lab Cost: 129 SAR)
-  5. Lipidomics Panel (Direct Lab Cost: 154 SAR)
-  *Combined direct laboratory cost is approximately 573 SAR, while the complete package retail price is set to range from 3,500 to 5,000 SAR per patient, yielding exceptional economic viability and high profit margins.*
-• **Centralized Mass Spectrometry (Calibra Suite)**: Deploying 2x SCIEX Citrine MD clinical systems and 3x SCIEX 4500MD systems for premium localized testing, including Tacrolimus TDM (Direct Lab Cost: 42 SAR | Selling Price: 350 SAR).
-• **17-Month Chronological Milestone Safeguard**: Rigorous monitoring of SFDA approvals, MOH BSL-3 HVAC compliance (-35 Pa negative pressures) remains actively locked on schedule.
-
-Please advise on any specific action vector or regulatory document required for your immediate steering review.`;
+      mockResponse = greetingEn + ", " + activeName + ".\n\n" +
+        "As your Senior PMO Advisor, I have reviewed: \"" + lastUserMessage + "\".\n\n" +
+        "Functional Medicine Package (5 assays): Organic Acids 71 SAR | SCFA 90 SAR | Amino Acid 129 SAR | Tryptophan 129 SAR | Lipidomics 154 SAR. Total cost: 573 SAR. Patient price: 3,500-5,000 SAR.\n" +
+        "Calibra Mass Spec Suite: 2x SCIEX Citrine MD + 3x SCIEX 4500MD. Tacrolimus TDM: 42 SAR cost / 350 SAR sell price.\n" +
+        "17-Month Milestone: SFDA approvals and BSL-3 HVAC (-35 Pa) compliance tracking active.\n\n" +
+        "Please advise on any specific action vector required for your immediate steering review.";
     }
     res.json({ text: mockResponse, groundingChunks: [] });
     return;
